@@ -199,32 +199,71 @@ try {
     }
     class Speaker {
       constructor() {
-        this.s = SpeechManager.sharedInstance()
+        this.audio = null
         this.speakerStatus = "stop"
+        this.lastPlay = 0
       }
+
       get status() {
-        if (Date.now() - this.lastPlay < 300) return "playing"
-        if (this.speakerStatus === "playing" && !this.s.sysSpeaking)
-          return "over"
+        if (!this.audio) return "stop"
+        if (this.audio.ended) return "over"
         return this.speakerStatus
       }
-      play(content) {
-        this.s.playText(content)
-        this.lastPlay = Date.now()
-        this.speakerStatus = "playing"
+
+      async play(content) {
+        try {
+          const response = await fetch("http://192.168.3.2:8000/text-to-speech", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: content })
+          })
+
+          if (!response.ok) {
+            throw new Error("Kokoro 请求失败")
+          }
+
+          const blob = await response.blob()
+          const url = URL.createObjectURL(blob)
+
+          if (this.audio) {
+            this.audio.pause()
+          }
+
+          this.audio = new Audio(url)
+          this.audio.play()
+          this.speakerStatus = "playing"
+          this.lastPlay = Date.now()
+
+          this.audio.onended = () => {
+            this.speakerStatus = "over"
+          }
+        } catch (e) {
+          console.log("TTS 播放失败：" + String(e))
+          this.speakerStatus = "stop"
+        }
       }
+
       pause() {
-        this.s.pauseSpeech()
-        this.speakerStatus = "pause"
+        if (this.audio) {
+          this.audio.pause()
+          this.speakerStatus = "pause"
+        }
       }
+
       continue() {
-        this.s.continueSpeech()
-        this.lastPlay = Date.now()
-        this.speakerStatus = "playing"
+        if (this.audio) {
+          this.audio.play()
+          this.speakerStatus = "playing"
+          this.lastPlay = Date.now()
+        }
       }
+
       close() {
-        this.s.stopSpeech()
-        this.speakerStatus = "stop"
+        if (this.audio) {
+          this.audio.pause()
+          this.audio.currentTime = 0
+          this.speakerStatus = "stop"
+        }
       }
     }
 
